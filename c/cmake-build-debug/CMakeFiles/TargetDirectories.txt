@@ -1,0 +1,3 @@
+/home/simone/Desktop/My projects/Inventory Management System/c/cmake-build-debug/CMakeFiles/c.dir
+/home/simone/Desktop/My projects/Inventory Management System/c/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/simone/Desktop/My projects/Inventory Management System/c/cmake-build-debug/CMakeFiles/rebuild_cache.dir
