@@ -4,7 +4,7 @@
 #include <sstream>
 #include <string>
 
-#define FILE_NAME "/home/simone/Desktop/My projects/Inventory Management System/c++/inventory.txt"
+#define FILE_NAME "/Users/simonesamardzhiev/Desktop/My projects/Inventory Management System/c++/inventory.txt"
 
 using namespace std;
 

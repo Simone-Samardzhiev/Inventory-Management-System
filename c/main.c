@@ -5,7 +5,7 @@
 
 #define MAX_PRODUCTS 1000
 #define MAX_NAME_LENGTH 100
-#define FILE_NAME "/home/simone/Desktop/My projects/Inventory Management System/c/inventory.txt"
+#define FILE_NAME "/Users/simonesamardzhiev/Desktop/My projects/Inventory Management System/c/data.txt"
 
 struct Item {
     int quantity;

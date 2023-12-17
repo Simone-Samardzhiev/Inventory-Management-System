@@ -39,7 +39,7 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "c::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-c-Debug-8ffd15cef5b279e358a1.json",
+					"jsonFile" : "target-c-Debug-aeff514f740815e31aec.json",
 					"name" : "c",
 					"projectIndex" : 0
 				}
@@ -49,12 +49,12 @@
 	"kind" : "codemodel",
 	"paths" : 
 	{
-		"build" : "/home/simone/Desktop/My projects/Inventory Management System/c/cmake-build-debug",
-		"source" : "/home/simone/Desktop/My projects/Inventory Management System/c"
+		"build" : "/Users/simonesamardzhiev/Desktop/My projects/Inventory Management System/Inventory-Management-System/c/cmake-build-debug",
+		"source" : "/Users/simonesamardzhiev/Desktop/My projects/Inventory Management System/Inventory-Management-System/c"
 	},
 	"version" : 
 	{
 		"major" : 2,
-		"minor" : 5
+		"minor" : 6
 	}
 }
