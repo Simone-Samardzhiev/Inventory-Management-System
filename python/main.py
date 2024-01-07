@@ -1,229 +1,306 @@
-import json
 import sys
-
+import json
+from functools import partial
+import mysql.connector
 from PyQt6.QtGui import QCloseEvent
-from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QGridLayout, QLineEdit
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QGridLayout, QLineEdit, QMessageBox
 
 
 class Data:
-    path: str = '/Users/simonesamardzhiev/Desktop/My projects/Inventory Management System/python/inventory.json'
-    data: list[dict]
+    items: list[dict] = []
+    username: str
+    password: str
 
     def __init__(self) -> None:
-        self.read_data()
+        self.get_login_info()
+        self.retrieve_data()
 
-    def read_data(self) -> None:
-        with open(self.path, "r") as file:
-            self.data = json.load(file)
+    def get_login_info(self) -> None:
+        with open("login_info.json", "r") as file:
+            login_info = json.load(file)
+            self.username = login_info["username"]
+            self.password = login_info["password"]
 
-    def write_data(self) -> None:
-        with open(self.path, "w") as file:
-            json.dump(self.data, file, indent=4)
+    def retrieve_data(self) -> None:
+        connection = None
+        cursor = None
+        try:
+            connection = mysql.connector.connect(host="localhost", user=self.username, password=self.password,
+                                                 database="InventoryManagementSystem")
+            cursor = connection.cursor()
+            query = "SELECT * FROM PythonData"
 
-    def check_if_name_exists(self, name: str) -> bool:
-        for item in self.data:
-            if item["name"] == name:
-                return True
+            cursor.execute(query)
+            data = cursor.fetchall()
 
-        return False
+            for row in data:
+                item = {
+                    "id": row[0],
+                    "name": row[1],
+                    "price": float(row[2]),
+                    "quantity": row[3]
+                }
+                self.items.append(item)
 
-    def change_item_attributes(self, name: str, price: float, quantity: int) -> None:
-        for item in self.data:
-            if item["name"] == name:
+        except mysql.connector.Error as err:
+            print("Error while connecting to the database for getting data ", err)
+            sys.exit(1)
+        finally:
+            if connection is not None:
+                connection.close()
+            if cursor is not None:
+                cursor.close()
+
+    def save_data(self) -> None:
+        connection = None
+        cursor = None
+
+        try:
+            connection = mysql.connector.connect(host="localhost", user=self.username, password=self.password,
+                                                 database="InventoryManagementSystem")
+            cursor = connection.cursor()
+            query = "DELETE FROM PythonData"
+            cursor.execute(query)
+
+            for item in self.items:
+                query = "INSERT INTO PythonData(name, price, quantity) VALUES (%s, %s, %s)"
+                cursor.execute(query, (item["name"], item["price"], item["quantity"]))
+
+        except mysql.connector.Error as err:
+            print("Error while connecting to the database for saving data ", err)
+            sys.exit(1)
+        finally:
+            if connection is not None:
+                connection.commit()
+                connection.close()
+            if cursor is not None:
+                cursor.close()
+
+    def delete_item(self, _id: int) -> None:
+        for item in self.items:
+            if item["id"] == _id:
+                self.items.remove(item)
+
+    def change_item_values(self, _id: int, price: float, quantity: int) -> None:
+        for item in self.items:
+            if item["id"] == _id:
                 item["price"] = price
                 item["quantity"] = quantity
 
-    def delete_item(self, name: str) -> None:
-        self.data = [item for item in self.data if item['name'] != name]
-
     def add_item(self, name: str, price: float, quantity: int) -> None:
-        item = {"name": name, "price": price, "quantity": quantity}
-        self.data.append(item)
+        item = {
+            "id": self.get_new_id(),
+            "name": name,
+            "price": price,
+            "quantity": quantity
+        }
+        self.items.append(item)
 
-    def iter_over_items(self) -> dict:
-        for item in self.data:
+    def get_new_id(self) -> int:
+        try:
+            return self.items[-1]["id"] + 1
+        except IndexError:
+            return 0
+
+    def __iter__(self) -> dict:
+        for item in self.items:
             yield item
 
 
-class AddItem(QWidget):
+class NewItemWindow(QWidget):
+    window: "Window"
     data: Data
-    layout: QGridLayout
-    nameEntry: QLineEdit
-    priceEntry: QLineEdit
-    quantityEntry: QLineEdit
-    button: QPushButton
+    nameLineEdit: QLineEdit
+    priceLineEdit: QLineEdit
+    quantityLineEdit: QLineEdit
 
-    def __init__(self, data: Data) -> None:
+    def __init__(self, window: "Window", data: "Data") -> None:
         super().__init__()
-        self.setWindowTitle('Add Item')
-        self.setGeometry(200, 200, 400, 400)
 
+        # setting attributes to the widgets
+        self.setWindowTitle("New Item")
+        self.setGeometry(200, 200, 300, 300)
+
+        # passing the arguments
+        self.window = window
         self.data = data
 
-        self.layout = QGridLayout()
+        # creating the widgets
+        layout = QGridLayout()
+        self.nameLineEdit = QLineEdit()
+        self.priceLineEdit = QLineEdit()
+        self.quantityLineEdit = QLineEdit()
+        add_button = QPushButton("Add item")
 
-        self.layout.addWidget(QLabel('Enter the name : '), 0, 0)
+        # connecting the button
+        add_button.clicked.connect(self.on_add_button_clicked)
 
-        self.nameEntry = QLineEdit()
-        self.layout.addWidget(self.nameEntry, 0, 1)
+        # adding the widgets
+        layout.addWidget(QLabel("Name"), 0, 0)
+        layout.addWidget(self.nameLineEdit, 0, 1)
+        layout.addWidget(QLabel("Price"), 1, 0)
+        layout.addWidget(self.priceLineEdit, 1, 1)
+        layout.addWidget(QLabel("Quantity"), 2, 0)
+        layout.addWidget(self.quantityLineEdit, 2, 1)
+        layout.addWidget(add_button, 3, 0)
 
-        self.layout.addWidget(QLabel("Enter the price : "), 1, 0)
+        self.setLayout(layout)
 
-        self.priceEntry = QLineEdit()
-        self.layout.addWidget(self.priceEntry, 1, 1)
-
-        self.layout.addWidget(QLabel("Enter the quantity : "), 2, 0)
-
-        self.quantityEntry = QLineEdit()
-        self.layout.addWidget(self.quantityEntry, 2, 1)
-
-        self.button = QPushButton('Add')
-        self.button.clicked.connect(self.on_add_clicked)
-        self.layout.addWidget(self.button, 3, 0)
-
-        self.setLayout(self.layout)
-        self.show()
-
-    def on_add_clicked(self) -> None:
+    def on_add_button_clicked(self) -> None:
+        name = self.nameLineEdit.text()
+        if len(name) == 0:
+            QMessageBox.warning(self, "Error", "The value in name in invalid")
+            return
         try:
-            name = self.nameEntry.text()
-            price = float(self.priceEntry.text())
-            quantity = int(self.quantityEntry.text())
-
-            if self.data.check_if_name_exists(name):
-                self.nameEntry.setPlaceholderText("The item exists")
-                self.nameEntry.setText("")
-            else:
-                self.data.add_item(name, price, quantity)
-                self.close()
-
+            price = float(self.priceLineEdit.text())
         except ValueError:
-            self.priceEntry.setPlaceholderText("The values are not numbers")
-            self.priceEntry.setText("")
-            self.quantityEntry.setPlaceholderText("The values are not numbers")
-            self.nameEntry.setText("")
+            self.priceLineEdit.setText("")
+            QMessageBox.warning(self, "Error", "The value in price in invalid")
+            return
+
+        try:
+            quantity = int(self.quantityLineEdit.text())
+        except ValueError:
+            self.quantityLineEdit.setText("")
+            QMessageBox.warning(self, "Error", "The value in quantity in invalid")
+            return
+
+        self.data.add_item(name, price, quantity)
+        self.window.on_search()
+        self.close()
 
 
 class ItemInfo(QWidget):
-    layout: QGridLayout
-    quantityEntry: QLineEdit
-    priceEntry: QLineEdit
-    buttonForSaving: QPushButton
-    buttonForDeleting: QPushButton
+    window: "Window"
     data: Data
-    item: dict
+    _id: int
+    priceLineEdit: QLineEdit
+    quantityLineEdit: QLineEdit
 
-    def __init__(self, item: dict, data: Data) -> None:
+    def __init__(self, window: "Window", data: Data, item: dict) -> None:
         super().__init__()
 
-        self.setWindowTitle(item['name'])
-        self.setGeometry(100, 100, 400, 400)
+        # setting attributes to the window
+        self.setWindowTitle(item["name"])
+        self.setGeometry(200, 200, 300, 300)
 
+        # passing the arguments
+        self.window = window
         self.data = data
-        self.item = item
+        self.item_id = item["id"]
 
-        self.layout = QGridLayout()
+        # creating the widgets
+        layout = QGridLayout()
+        self.priceLineEdit = QLineEdit()
+        self.quantityLineEdit = QLineEdit()
+        save_button = QPushButton("Save")
+        delete_button = QPushButton("Delete")
 
-        self.layout.addWidget(QLabel("Price :"), 0, 0)
+        # setting attributes and connecting the widgets
+        self.priceLineEdit.setText(str(item["price"]))
+        self.quantityLineEdit.setText(str(item["quantity"]))
+        save_button.clicked.connect(self.on_save_clicked)
+        delete_button.clicked.connect(self.on_delete_clicked)
 
-        self.priceEntry = QLineEdit()
-        self.priceEntry.setText(str(self.item["price"]))
-        self.layout.addWidget(self.priceEntry, 0, 1)
+        # adding the widgets
+        layout.addWidget(QLabel("Price"), 0, 0)
+        layout.addWidget(self.priceLineEdit, 0, 1)
+        layout.addWidget(QLabel("Quantity"), 1, 0)
+        layout.addWidget(self.quantityLineEdit, 1, 1)
+        layout.addWidget(save_button, 3, 0)
+        layout.addWidget(delete_button, 4, 0)
 
-        self.layout.addWidget(QLabel('Quantity :'), 1, 0)
+        self.setLayout(layout)
 
-        self.quantityEntry = QLineEdit()
-        self.quantityEntry.setText(str(self.item["quantity"]))
-        self.layout.addWidget(self.quantityEntry, 1, 1)
-
-        self.buttonForSaving = QPushButton('Save')
-        self.buttonForSaving.clicked.connect(self.on_save_pressed)
-        self.layout.addWidget(self.buttonForSaving, 2, 0)
-
-        self.buttonForDeleting = QPushButton('Delete')
-        self.buttonForDeleting.clicked.connect(self.on_delete_pressed)
-        self.layout.addWidget(self.buttonForDeleting, 3, 0)
-
-        self.setLayout(self.layout)
-        self.show()
-
-    def on_save_pressed(self):
+    def on_save_clicked(self) -> None:
         try:
-            price = float(self.priceEntry.text())
-            quantity = int(self.quantityEntry.text())
-            name = self.item['name']
-            self.data.change_item_attributes(name, price, quantity)
-            self.close()
-
+            price = float(self.priceLineEdit.text())
         except ValueError:
-            self.priceEntry.setPlaceholderText("The values are not numbers")
-            self.priceEntry.setText("")
-            self.quantityEntry.setPlaceholderText("The values are not numbers")
-            self.quantityEntry.setText("")
+            self.priceLineEdit.setText("")
+            QMessageBox.warning(self, "Error", "The value in price in invalid")
+            return
 
-    def on_delete_pressed(self):
-        self.data.delete_item(self.item['name'])
+        try:
+            quantity = int(self.quantityLineEdit.text())
+        except ValueError:
+            self.quantityLineEdit.setText("")
+            QMessageBox.warning(self, "Error", "The value in quantity in invalid")
+            return
+
+        self.data.change_item_values(self.item_id, price, quantity)
+        self.window.on_search()
+        self.close()
+
+    def on_delete_clicked(self) -> None:
+        self.data.delete_item(self.item_id)
+        self.window.on_search()
         self.close()
 
 
 class Window(QWidget):
-    mainLayout: QGridLayout
-    buttonForAddingItem: QPushButton
-    searchEntry: QLineEdit
+    data = Data()
+    layout: QGridLayout
+    searchBar: QLineEdit
     results: list[QPushButton] = []
-    data: Data = Data()
-    windows: list = []
+    itemInfoWindow: ItemInfo
+    newItemWindow: NewItemWindow
 
     def __init__(self) -> None:
         super().__init__()
 
-        self.setWindowTitle('Inventory Management System')
-        self.setGeometry(100, 100, 600, 600)
+        # setting attributes to the window
+        self.setWindowTitle("Inventory Management System")
+        self.setGeometry(100, 100, 500, 500)
 
-        self.mainLayout = QGridLayout()
+        # creating the widgets
+        self.layout = QGridLayout()
+        add_button = QPushButton("Add item")
+        self.searchBar = QLineEdit()
 
-        self.buttonForAddingItem = QPushButton("Add Item")
-        self.buttonForAddingItem.clicked.connect(self.on_add_pressed)
-        self.mainLayout.addWidget(self.buttonForAddingItem, 0, 0)
+        # adding the widgets
+        self.layout.addWidget(add_button, 0, 0)
+        self.layout.addWidget(self.searchBar, 1, 0)
 
-        self.searchEntry = QLineEdit()
-        self.searchEntry.textChanged.connect(self.on_search)
-        self.mainLayout.addWidget(self.searchEntry, 1, 0)
+        # connecting the widgets
+        add_button.clicked.connect(self.on_add_clicked)
+        self.searchBar.returnPressed.connect(self.on_search)
 
-        self.setLayout(self.mainLayout)
+        self.setLayout(self.layout)
 
-    def on_search(self, text: str) -> None:
+    def on_add_clicked(self) -> None:
+        self.newItemWindow = NewItemWindow(self, self.data)
+        self.newItemWindow.show()
+
+    def on_search(self) -> None:
         for result in self.results:
-            self.mainLayout.removeWidget(result)
-
+            self.layout.removeWidget(result)
         self.results.clear()
-        text = text.lower()
 
+        text = self.searchBar.text()
         row = 2
-        for item in self.data.iter_over_items():
+
+        for item in self.data:
             if item["name"].startswith(text):
-                button = QPushButton(item["name"])
-                button.clicked.connect(lambda: self.on_result_pressed(item))
-                self.mainLayout.addWidget(button, row, 0)
+                result = QPushButton(item["name"])
+                self.results.append(result)
+
+                result.clicked.connect(partial(self.on_result_clicked, item))
+
+                self.layout.addWidget(result, row, 0)
                 row += 1
-                self.results.append(button)
 
-    def on_result_pressed(self, item: dict) -> None:
-        self.windows.clear()
-        self.windows.append(ItemInfo(item, self.data))
-
-    def on_add_pressed(self) -> None:
-        self.windows.clear()
-        self.windows.append(AddItem(self.data))
+    def on_result_clicked(self, item: dict) -> None:
+        self.itemInfoWindow = ItemInfo(self, self.data, item)
+        self.itemInfoWindow.show()
 
     def closeEvent(self, event: QCloseEvent) -> None:
-        self.windows.clear()
-        self.data.write_data()
+        self.data.save_data()
         event.accept()
+        sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app = QApplication(sys.argv)
     wnd = Window()
     wnd.show()
-    sys.exit(app.exec())
+    app.exec()

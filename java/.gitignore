@@ -1,4 +1,5 @@
 .idea/
 out/
 java.iml
-.DS_Store
+login_info.json
+.DS_Store/

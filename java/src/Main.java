@@ -1,100 +1,158 @@
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.annotation.Target;
 import java.lang.reflect.Type;
+import java.sql.*;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Objects;
 
 class Item {
-    private final String name;
+    private String name;
     private double price;
     private int quantity;
+    private int id;
 
-    public Item(String name, double price, int quantity) {
+    public Item(String name, double price, int quantity, int id) {
         this.name = name;
         this.price = price;
         this.quantity = quantity;
+        this.id = id;
     }
 
     public String getName() {
         return name;
     }
 
-    public double getPrice() {
-        return price;
+    public void setName(String name) {
+        this.name = name;
     }
 
-    public int getQuantity() {
-        return quantity;
+    public double getPrice() {
+        return price;
     }
 
     public void setPrice(double price) {
         this.price = price;
     }
 
+    public int getQuantity() {
+        return quantity;
+    }
 
     public void setQuantity(int quantity) {
         this.quantity = quantity;
     }
+
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
 }
 
-class Data {
-    final String PATH = "/Users/simonesamardzhiev/Desktop/My projects/Inventory Management System/java/data.json";
-    private ArrayList<Item> items;
+class Data implements Iterable<Item> {
+    private final ArrayList<Item> items = new ArrayList<>();
+    private String username;
+    private String password;
 
     public Data() {
-        readData();
+        getLoginInfo();
+        retrieveData();
     }
 
-    private void readData() {
-        try (FileReader reader = new FileReader(PATH)) {
-            Type type = new TypeToken<ArrayList<Item>>() {
-            }.getType();
+    private void getLoginInfo() {
+        try (FileReader reader = new FileReader("/Users/simonesamardzhiev/Desktop/My projects/Inventory Management System/java/login_info.json")) {
             Gson gson = new Gson();
-            this.items = gson.fromJson(reader, type);
-        } catch (IOException e) {
-            System.err.println("The file for reading couldn't be opened");
+            Type type = new TypeToken<HashMap<String, String>>() {
+            }.getType();
+            HashMap<String, String> map = gson.fromJson(reader, type);
 
+            username = map.get("username");
+            password = map.get("password");
+        } catch (IOException e) {
+            System.err.println("There was an error reading the login info !");
+            System.exit(1);
         }
     }
 
-    public void writeData() {
-        try (FileWriter writer = new FileWriter(PATH)) {
-            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-            gson.toJson(this.items, writer);
-        } catch (IOException e) {
-            System.out.println("The file for writing couldn't be opened");
-        }
-    }
+    private void retrieveData() {
+        String url = "jdbc:mysql://localhost:3306/InventoryManagementSystem";
 
-    public boolean checkIfItemExist(String name) {
-        for (Item item : this.items) {
-            if (Objects.equals(item.getName(), name)) {
-                return true;
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            Connection connection = DriverManager.getConnection(url, username, password);
+            Statement statement = connection.createStatement();
+
+            String query = "SELECT * FROM JavaData";
+            ResultSet resultSet = statement.executeQuery(query);
+
+            while (resultSet.next()) {
+                int id = resultSet.getInt("id");
+                String name = resultSet.getString("name");
+                double price = resultSet.getDouble("price");
+                int quantity = resultSet.getInt("quantity");
+
+                items.add(new Item(name, price, quantity, id));
             }
+
+            connection.close();
+            statement.close();
+            resultSet.close();
+
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+            System.err.println("There was an error trying to read the data from the database !");
+            System.exit(1);
         }
-        return false;
     }
 
-    public void addItem(String name, double price, int quantity) {
-        this.items.add(new Item(name, price, quantity));
+    public void storeData() {
+        String url = "jdbc:mysql://localhost:3306/InventoryManagementSystem";
+        String username = "root";
+        String password = "0646307000";
+
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+            Connection connection = DriverManager.getConnection(url, username, password);
+
+            Statement statement = connection.createStatement();
+            statement.executeUpdate("DELETE FROM JavaData");
+
+            PreparedStatement preparedStatement = connection.prepareStatement("INSERT INTO JavaData(name, price, quantity) VALUES (?, ?, ?)");
+
+            for (Item item : items) {
+                preparedStatement.setString(1, item.getName());
+                preparedStatement.setDouble(2, item.getPrice());
+                preparedStatement.setInt(3, item.getQuantity());
+
+                preparedStatement.executeUpdate();
+            }
+
+            statement.close();
+            preparedStatement.close();
+            connection.close();
+        } catch (Exception e) {
+            System.err.println("There was a problem writing the file from the database !");
+        }
     }
 
-    public void changeItemAttributes(String name, double price, int quantity) {
-        for (Item item : this.items) {
-            if (Objects.equals(item.getName(), name)) {
+    public void changeItemValues(double price, int quantity, int id) {
+        for (Item item : items) {
+            if (item.getId() == id) {
                 item.setPrice(price);
                 item.setQuantity(quantity);
                 break;
@@ -102,253 +160,304 @@ class Data {
         }
     }
 
-    public void deleteItem(String name) {
-        for (Item item : this.items) {
-            if (Objects.equals(item.getName(), name)) {
-                this.items.remove(item);
+    public void addItem(String name, double price, int quantity) {
+        items.add(new Item(name, price, quantity, getNewId()));
+    }
+
+    private int getNewId() {
+        if (items.isEmpty()) {
+            return 0;
+        } else {
+            return items.getLast().getId() + 1;
+        }
+    }
+
+    public void deleteItem(int id) {
+        for (Item item : items) {
+            if (item.getId() == id) {
+                items.remove(item);
                 break;
             }
         }
     }
 
-    public ArrayList<Item> iterOverItems() {
-        return this.items;
+    public boolean checkIfNameExist(String name) {
+        for (Item item : items) {
+            if (Objects.equals(item.getName(), name)) {
+                return true;
+            }
+        }
+        return false;
     }
+
+    @Override
+    public Iterator<Item> iterator() {
+        return items.iterator();
+    }
+
 }
 
-class CreateItem extends JFrame {
-    CreateItem(Data data) {
+class AddItemWindow extends JFrame {
+    private final Window window;
+    private final Data data;
+
+    private final JTextField nameTextField;
+    private final JTextField priceTextField;
+    private final JTextField quantityTextField;
+
+    public AddItemWindow(Window window, Data data) {
         super();
 
-        this.setSize(400, 200);
+        // setting attributes to the window
+        this.setSize(300, 300);
         this.setTitle("Add new item");
         this.setLayout(new GridBagLayout());
-        this.setResizable(false);
 
+        // passing the argument
+        this.window = window;
+        this.data = data;
+
+        // creating the widgets
         GridBagConstraints layout = new GridBagConstraints();
-        layout.gridy = 0;
-        layout.gridx = 0;
+        nameTextField = new JTextField();
+        priceTextField = new JTextField();
+        quantityTextField = new JTextField();
+        JButton addButton = new JButton("Add item");
 
-        this.add(new JLabel("Enter the name :"), layout);
+        // setting attributes and connecting the widgets
+        nameTextField.setPreferredSize(new Dimension(100, 25));
+        priceTextField.setPreferredSize(new Dimension(100, 25));
+        quantityTextField.setPreferredSize(new Dimension(100, 25));
+        addButton.addActionListener(e -> AddItemWindow.this.onAddClicked());
+
+        // adding the widgets
+        layout.gridx = 0;
+        layout.gridy = 0;
+        this.add(new JLabel("Name :"), layout);
 
         layout.gridx = 1;
-
-        JTextField nameField = new JTextField();
-        nameField.setPreferredSize(new Dimension(100, 20));
-        this.add(nameField, layout);
+        this.add(nameTextField);
 
         layout.gridx = 0;
         layout.gridy = 1;
-
-        this.add(new JLabel("Enter the price :"), layout);
+        this.add(new JLabel("Price :"), layout);
 
         layout.gridx = 1;
-
-        JTextField priceField = new JTextField();
-        priceField.setPreferredSize(new Dimension(100, 20));
-        this.add(priceField, layout);
+        this.add(priceTextField, layout);
 
         layout.gridx = 0;
         layout.gridy = 2;
-
-        this.add(new JLabel("Enter the quantity :"), layout);
+        this.add(new JLabel("Quantity"), layout);
 
         layout.gridx = 1;
-
-        JTextField quantityField = new JTextField();
-        quantityField.setPreferredSize(new Dimension(100, 20));
-        this.add(quantityField, layout);
+        this.add(quantityTextField, layout);
 
         layout.gridx = 0;
         layout.gridy = 3;
-
-        JButton button = new JButton("Add item");
-        button.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                try {
-                    String name = nameField.getText();
-                    double price = Double.parseDouble(priceField.getText());
-                    int quantity = Integer.parseInt(quantityField.getText());
-
-                    if (data.checkIfItemExist(name)) {
-                        JOptionPane.showMessageDialog(CreateItem.this, "The name already exists !");
-                    } else {
-                        data.addItem(name, price, quantity);
-                        CreateItem.this.dispose();
-                    }
-                } catch (NumberFormatException e) {
-                    JOptionPane.showMessageDialog(CreateItem.this, "The values are not numbers !");
-                }
-            }
-        });
-        this.add(button, layout);
+        this.add(addButton, layout);
 
         this.setVisible(true);
+    }
+
+    void onAddClicked() {
+        String name = nameTextField.getText();
+        double price;
+        int quantity;
+
+        if (data.checkIfNameExist(name)) {
+            JOptionPane.showMessageDialog(this, "The name already exist !");
+            return;
+        }
+
+        try {
+            price = Double.parseDouble(priceTextField.getText());
+        } catch (NumberFormatException e) {
+            priceTextField.setText("");
+            JOptionPane.showMessageDialog(this, "Invalid input in price!");
+            return;
+        }
+
+        try {
+            quantity = Integer.parseInt(quantityTextField.getText());
+        } catch (NumberFormatException e) {
+            quantityTextField.setText("");
+            JOptionPane.showMessageDialog(this, "Invalid input in quantity!");
+            return;
+        }
+
+        data.addItem(name, price, quantity);
+        window.onSearch();
+        this.dispose();
     }
 }
 
 class ItemInfo extends JFrame {
+    private final Window window;
+    private final Data data;
 
+    int id;
+    private final JTextField priceTextField;
+    private final JTextField quantityTextField;
 
-    ItemInfo(Item item, Data data) {
+    public ItemInfo(Window window, Data data, Item item) {
         super();
 
-        this.setSize(200, 200);
+        // setting attributes to the window
+        this.setSize(300, 300);
         this.setTitle(item.getName());
         this.setLayout(new GridBagLayout());
-        this.setResizable(false);
 
+        // passing the arguments
+        this.window = window;
+        this.data = data;
+        this.id = item.getId();
+
+        // creating the widgets
         GridBagConstraints layout = new GridBagConstraints();
+        priceTextField = new JTextField();
+        quantityTextField = new JTextField();
+        JButton saveButton = new JButton("Save");
+        JButton deleteButton = new JButton("Delete");
+
+        // connecting the widgets to the function and setting attributes
+        priceTextField.setPreferredSize(new Dimension(100, 25));
+        priceTextField.setText(Double.toString(item.getPrice()));
+        quantityTextField.setPreferredSize(new Dimension(100, 25));
+        quantityTextField.setText(Integer.toString(item.getQuantity()));
+        saveButton.addActionListener(e -> ItemInfo.this.onSaveClicked());
+        deleteButton.addActionListener(e -> ItemInfo.this.onDeleteClicked());
+
+
+        // adding the widgets
         layout.gridx = 0;
         layout.gridy = 0;
-
         this.add(new JLabel("Price :"), layout);
 
         layout.gridx = 1;
+        this.add(priceTextField, layout);
 
-        JTextField priceField = new JTextField();
-        priceField.setPreferredSize(new Dimension(100, 20));
-        priceField.setText(Double.toString(item.getPrice()));
-        this.add(priceField, layout);
-
-        layout.gridy = 1;
         layout.gridx = 0;
-
+        layout.gridy = 1;
         this.add(new JLabel("Quantity :"), layout);
 
         layout.gridx = 1;
+        this.add(quantityTextField, layout);
 
-        JTextField quantityField = new JTextField();
-        quantityField.setPreferredSize(new Dimension(100, 20));
-        quantityField.setText(Integer.toString(item.getQuantity()));
-        this.add(quantityField, layout);
 
         layout.gridx = 0;
         layout.gridy = 2;
-
-        JButton buttonForDeleting = new JButton("Delete");
-        buttonForDeleting.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                data.deleteItem(item.getName());
-                ItemInfo.this.dispose();
-            }
-        });
-        this.add(buttonForDeleting, layout);
+        this.add(saveButton, layout);
 
         layout.gridy = 3;
-
-        JButton buttonForSaving = new JButton("Save");
-        buttonForSaving.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                try {
-                    double price = Double.parseDouble(priceField.getText());
-                    int quantity = Integer.parseInt(quantityField.getText());
-                    data.changeItemAttributes(item.getName(), price, quantity);
-                    ItemInfo.this.dispose();
-                } catch (NumberFormatException e) {
-                    JOptionPane.showMessageDialog(ItemInfo.this, "The values are not numbers !");
-                }
-            }
-        });
-        this.add(buttonForSaving, layout);
+        this.add(deleteButton, layout);
 
         this.setVisible(true);
     }
+
+    void onSaveClicked() {
+        double price;
+        int quantity;
+
+        try {
+            price = Double.parseDouble(priceTextField.getText());
+        } catch (NumberFormatException e) {
+            priceTextField.setText("");
+            JOptionPane.showMessageDialog(this, "Invalid input in price!");
+            return;
+        }
+
+        try {
+            quantity = Integer.parseInt(quantityTextField.getText());
+
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Invalid input in quantity!");
+            return;
+        }
+
+        data.changeItemValues(price, quantity, id);
+        window.onSearch();
+        this.dispose();
+    }
+
+    void onDeleteClicked() {
+        data.deleteItem(id);
+        window.onSearch();
+        this.dispose();
+    }
+
 }
 
 class Window extends JFrame {
     private final Data data = new Data();
+    private final JTextField searchBar;
+
     private final ArrayList<JButton> results = new ArrayList<>();
 
-    JTextField searchField = new JTextField();
-
-    Window() {
+    public Window() {
         super();
 
+        // setting attributes to the window
+        this.setSize(500, 500);
         this.setTitle("Inventory management system");
-        this.setSize(600, 600);
         this.setLayout(new GridBagLayout());
-
-        GridBagConstraints layout = new GridBagConstraints();
-        layout.gridx = 0;
-        layout.gridy = 0;
-
-        JButton button = new JButton("Add item");
-        button.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                new CreateItem(Window.this.data);
-            }
-        });
-        this.add(button, layout);
-
-        layout.gridy = 1;
-
-
-        searchField.setPreferredSize(new Dimension(100, 20));
-        this.add(searchField, layout);
-        searchField.getDocument().addDocumentListener(new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent documentEvent) {
-                onSearch();
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent documentEvent) {
-                onSearch();
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent documentEvent) {
-                onSearch();
-            }
-        });
-
-
         this.addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                Window.this.data.writeData();
+                data.storeData();
                 System.exit(0);
             }
         });
+
+        // creating the widgets
+        GridBagConstraints layout = new GridBagConstraints();
+        JButton addButton = new JButton("Add new item");
+        searchBar = new JTextField();
+
+        // connecting the widgets with function and setting attributes
+        addButton.addActionListener(e -> new AddItemWindow(Window.this, Window.this.data));
+        searchBar.addActionListener(e -> Window.this.onSearch());
+        searchBar.setPreferredSize(new Dimension(150, 25));
+
+        // adding the widgets
+        layout.gridx = 0;
+        layout.gridy = 0;
+        this.add(addButton, layout);
+
+        layout.gridy = 1;
+        this.add(searchBar, layout);
     }
 
-    private void onSearch() {
-        Container container = this.getContentPane();
-        for (JButton button : this.results) {
-            container.remove(button);
+
+    void onSearch() {
+        for (JButton result : results) {
+            this.getContentPane().remove(result);
         }
-        this.results.clear();
-        container.repaint();
-        container.revalidate();
+        results.clear();
 
+        String text = searchBar.getText();
         GridBagConstraints layout = new GridBagConstraints();
-        layout.gridy = 2;
         layout.gridx = 0;
-        String text = this.searchField.getText();
+        layout.gridy = 2;
 
-        for (Item item : this.data.iterOverItems()) {
+        for (Item item : data) {
             if (item.getName().startsWith(text)) {
-                JButton button = new JButton(item.getName());
-                button.addActionListener(new ActionListener() {
-                    @Override
-                    public void actionPerformed(ActionEvent actionEvent) {
-                        new ItemInfo(item, Window.this.data);
-                    }
-                });
-                this.add(button, layout);
+                JButton result = new JButton(item.getName());
+                results.add(result);
+
+                result.addActionListener(e -> new ItemInfo(Window.this, Window.this.data, item));
+
+                this.add(result, layout);
                 layout.gridy++;
-                this.results.add(button);
             }
         }
+
+        this.revalidate();
+        this.repaint();
     }
+
 }
 
-public class Main {
+class Main {
     public static void main(String[] args) {
         Window window = new Window();
         window.setVisible(true);
