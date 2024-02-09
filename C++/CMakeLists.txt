@@ -10,16 +10,22 @@ find_package(Qt6 COMPONENTS
         Core
         Gui
         Widgets
-        Sql
-        REQUIRED
+        REQUIRED)
+
+include_directories("/opt/homebrew/Cellar/mysql-connector-c++/8.3.0/include/")
+
+
+link_directories("/opt/homebrew/Cellar/mysql-connector-c++/8.3.0/lib/")
+
+add_executable(c__ main.cpp
 )
-add_executable(c__ main.cpp)
 
 target_link_libraries(c__
         Qt::Core
         Qt::Gui
         Qt::Widgets
-        Qt6::Sql
 )
 
-
+target_link_libraries(c__
+        mysqlcppconn8
+)
